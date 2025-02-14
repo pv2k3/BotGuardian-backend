@@ -1,0 +1,7 @@
+fastapi
+pandas
+joblib
+io
+requests
+datetime
+numpy
