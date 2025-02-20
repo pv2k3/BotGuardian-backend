@@ -6,14 +6,6 @@ from fastapi.middleware.cors import CORSMiddleware
 import requests
 from datetime import datetime
 import numpy as np
-import re
-import nltk
-from sklearn.feature_extraction.text import TfidfVectorizer
-from sklearn.model_selection import train_test_split
-from sklearn.ensemble import GradientBoostingClassifier
-from sklearn.metrics import accuracy_score, classification_report, roc_auc_score
-from nltk.sentiment import SentimentIntensityAnalyzer
-from pathlib import Path
 import os
 from fastapi import FastAPI
 from dotenv import load_dotenv
@@ -21,84 +13,9 @@ import uvicorn
 
 load_dotenv()
 
-# Download Sentiment Analyzer
-nltk.download('vader_lexicon')
-sia = SentimentIntensityAnalyzer()
-
-file_name = "test.csv"
-file_path = Path(os.getcwd()) / file_name
-
 SECRET_KEY = os.getenv("RAPID_API_KEY1")
 
 app = FastAPI()
-
-
-data = pd.read_csv(file_path)
-
-
-# Drop unnecessary columns
-drop_columns = [
-    "id", "screen_name", "profile_image_url", "profile_background_image_url"
-]
-data.drop(columns=drop_columns, inplace=True, errors="ignore")
-
-# Convert categorical features
-data["verified"] = data["verified"].astype(int)
-data["geo_enabled"] = data["geo_enabled"].astype(int)
-data["default_profile"] = data["default_profile"].astype(int)
-data["default_profile_image"] = data["default_profile_image"].astype(int)
-
-# Process text features
-def preprocess_text(text):
-    text = str(text).lower()
-    text = re.sub(r'http\S+', '', text)  # Remove URLs
-    text = re.sub(r'[^a-zA-Z ]', '', text)  # Remove special characters
-    return text
-
-data["clean_description"] = data["description"].fillna("").apply(preprocess_text)
-data["sentiment"] = data["clean_description"].apply(lambda x: sia.polarity_scores(x)['compound'])
-
-# TF-IDF for text-based features
-tfidf = TfidfVectorizer(max_features=500, ngram_range=(1,2))
-tfidf_features = tfidf.fit_transform(data["clean_description"]).toarray()
-
-# Prepare feature set
-feature_columns = [
-    "default_profile", "default_profile_image", "favourites_count",
-    "followers_count", "friends_count", "geo_enabled", "statuses_count",
-    "verified", "average_tweets_per_day", "account_age_days", "sentiment"
-]
-
-X = np.hstack((tfidf_features, data[feature_columns].values))
-y = data["account_type"].map({"bot": 1, "human": 0}).astype(int)
-
-
-# Split data
-X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.3, random_state=42, stratify=y)
-
-# Train model
-model = GradientBoostingClassifier(n_estimators=100, learning_rate=0.1, max_depth=3, random_state=42)
-model.fit(X_train, y_train)
-
-# Predictions
-y_pred = model.predict(X_test)
-y_pred_prob = model.predict_proba(X_test)[:, 1]
-
-# Compute Metrics
-accuracy = accuracy_score(y_test, y_pred)
-roc_auc = roc_auc_score(y_test, y_pred_prob)
-report = classification_report(y_test, y_pred, output_dict=True)
-
-
-# ✅ FastAPI Route for Model Metrics
-@app.get("/metrics/")
-async def get_model_metrics():    
-    
-    return {
-        "accuracy": accuracy,
-        "roc_auc": roc_auc,
-        "classification_report": report
-    }
 
 
 # Load the trained model
@@ -223,3 +140,6 @@ async def predict_user(username: str = Form(None)):
     except Exception as e:
         return {"error": str(e)}
 
+if __name__ == "__main__":
+    import uvicorn
+    uvicorn.run(app, host="0.0.0.0", port=8000)
