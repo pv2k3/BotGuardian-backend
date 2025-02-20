@@ -58,11 +58,9 @@ async def predict_user(username: str = Form(None)):
         url = "https://twitter241.p.rapidapi.com/user"
         if not username:
        	    return {"error": f"username {username}"}
-
         querystring = {
             "username": username
         }
-
         headers = {
             "x-rapidapi-key": f"{SECRET_KEY}",
             "x-rapidapi-host": "twitter241.p.rapidapi.com"
