@@ -17,7 +17,6 @@ SECRET_KEY = os.getenv("RAPID_API_KEY1")
 
 app = FastAPI()
 
-
 # Load the trained model
 model = joblib.load("bot_detector.pkl")  # Ensure the model file exists
 
@@ -97,29 +96,17 @@ async def predict_user(username: str = Form(None)):
             # Calculate average tweets per day
             average_tweets_per_day = statuses_count / account_age_days if account_age_days > 0 else 0
 
-            ret_data = {
-                "default_profile": default_profile,
-                "favourites_count": favourites_count,
-                "followers_count": followers_count,
-                "friends_count": friends_count,
-                "geo_enabled": geo_enabled,
-                "statuses_count": statuses_count,
-                "verified": verified,
-                "average_tweets_per_day": average_tweets_per_day,
-                "account_age_days": account_age_days
-            }
-
             # Extract values in the specified order
             features = [
-                ret_data["default_profile"],
-                ret_data["favourites_count"],
-                ret_data["followers_count"],
-                ret_data["friends_count"],
-                ret_data["geo_enabled"],
-                ret_data["statuses_count"],
-                ret_data["verified"],
-                ret_data["average_tweets_per_day"],
-                ret_data["account_age_days"]
+                default_profile,
+                favourites_count,
+                followers_count,
+                friends_count,
+                geo_enabled,
+                statuses_count,
+                verified,
+                average_tweets_per_day,
+                account_age_days
             ]
 
             # Reshape the features into a 2D array
@@ -128,9 +115,11 @@ async def predict_user(username: str = Form(None)):
             # Predict using the model
             prediction_proba = model.predict_proba(features_array)[0]
             bot_probability = prediction_proba[1]  # Probability of bot
+            user_probability = prediction_proba[0]  # Probability of User
             return {
                 "id": username,
                 "bot_probability": float(bot_probability * 100),
+                "user_probability": float(user_probability * 100)
             }
         except Exception as e:
             return {"error": f"Error calculating metrics: {str(e)}"}
@@ -138,6 +127,6 @@ async def predict_user(username: str = Form(None)):
     except Exception as e:
         return {"error": str(e)}
 
-if __name__ == "__main__":
-    import uvicorn
-    uvicorn.run(app, host="0.0.0.0", port=8000)
+# if __name__ == "__main__":
+#     import uvicorn
+#     uvicorn.run(app, host="0.0.0.0", port=8000)
