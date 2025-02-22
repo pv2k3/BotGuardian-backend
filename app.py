@@ -28,6 +28,10 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+@app.get("/")
+async def test():
+    return {"msg": "This is the test result"}
+
 @app.post("/predict-csv/")
 async def predict_user_csv(file: UploadFile = File(...)):
     try:
