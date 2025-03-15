@@ -1,4 +1,4 @@
-from fastapi import FastAPI, File, UploadFile, Form
+from fastapi import FastAPI, File, UploadFile, Form, Request
 import pandas as pd
 import joblib
 import io
@@ -13,6 +13,7 @@ import uvicorn
 import sqlite3  # This is already part of Python's standard library
 from sqlite3 import Error
 import time
+import json
 
 load_dotenv()
 
@@ -48,6 +49,8 @@ def setup_database():
     if conn is not None:
         try:
             cursor = conn.cursor()
+            
+            # Create prediction cache table
             cursor.execute('''
                 CREATE TABLE IF NOT EXISTS prediction_cache (
                     username TEXT PRIMARY KEY,
@@ -56,6 +59,18 @@ def setup_database():
                     timestamp INTEGER NOT NULL
                 )
             ''')
+            
+            # Create user request log table
+            cursor.execute('''
+                CREATE TABLE IF NOT EXISTS user_requests (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    ip_address TEXT NOT NULL,
+                    request_timestamps TEXT NOT NULL,
+                    last_request INTEGER NOT NULL,
+                    total_requests INTEGER NOT NULL
+                )
+            ''')
+            
             conn.commit()
             print("Database initialized successfully")
         except Error as e:
@@ -111,12 +126,58 @@ def cache_result(username, bot_probability, user_probability):
             print(f"Cache store error: {e}")
             conn.close()
 
+def log_user_request(ip_address):
+    conn = create_connection()
+    if conn is not None:
+        try:
+            cursor = conn.cursor()
+            current_time = int(time.time())
+            
+            # Check if this IP already exists
+            cursor.execute(
+                "SELECT request_timestamps, total_requests FROM user_requests WHERE ip_address = ?",
+                (ip_address,)
+            )
+            result = cursor.fetchone()
+            
+            if result:
+                # Update existing record
+                timestamps = json.loads(result[0])
+                # Append new timestamp, keeping the last 100 timestamps
+                timestamps.append(current_time)
+                if len(timestamps) > 100:
+                    timestamps = timestamps[-100:]
+                
+                total_requests = result[1] + 1
+                
+                cursor.execute(
+                    "UPDATE user_requests SET request_timestamps = ?, last_request = ?, total_requests = ? WHERE ip_address = ?",
+                    (json.dumps(timestamps), current_time, total_requests, ip_address)
+                )
+            else:
+                # Create new record
+                timestamps = [current_time]
+                cursor.execute(
+                    "INSERT INTO user_requests (ip_address, request_timestamps, last_request, total_requests) VALUES (?, ?, ?, ?)",
+                    (ip_address, json.dumps(timestamps), current_time, 1)
+                )
+            
+            conn.commit()
+            conn.close()
+        except Error as e:
+            print(f"User request log error: {str(e)}")
+            conn.close()
+
 @app.get("/")
 async def test():
     return {"msg": "This is the test result"}
 
 @app.post("/predict-csv/")
-async def predict_user_csv(file: UploadFile = File(...)):
+async def predict_user_csv(request: Request, file: UploadFile = File(...)):
+    # Log the request
+    client_ip = request.client.host
+    log_user_request(client_ip)
+    
     try:
         results = []
         # Read file as a pandas dataframe
@@ -139,7 +200,11 @@ async def predict_user_csv(file: UploadFile = File(...)):
         return {"error": str(e)}
 
 @app.post("/predict-user/")
-async def predict_user(username: str = Form(None)):
+async def predict_user(request: Request, username: str = Form(None)):
+    # Log the request
+    client_ip = request.client.host
+    log_user_request(client_ip)
+    
     try:
         if not username:
             return {"error": f"username {username}"}
@@ -226,7 +291,11 @@ async def predict_user(username: str = Form(None)):
         return {"error": str(e)}
 
 @app.get("/cache-stats/")
-async def get_cache_stats():
+async def get_cache_stats(request: Request):
+    # Log the request
+    client_ip = request.client.host
+    log_user_request(client_ip)
+    
     conn = create_connection()
     if conn is not None:
         try:
@@ -260,7 +329,11 @@ async def get_cache_stats():
     return {"error": "Database connection failed"}
 
 @app.delete("/clear-cache/")
-async def clear_cache():
+async def clear_cache(request: Request):
+    # Log the request
+    client_ip = request.client.host
+    log_user_request(client_ip)
+    
     conn = create_connection()
     if conn is not None:
         try:
@@ -273,6 +346,91 @@ async def clear_cache():
         except Error as e:
             conn.close()
             return {"error": f"Failed to clear cache: {str(e)}"}
+    return {"error": "Database connection failed"}
+
+@app.get("/user-stats/")
+async def get_user_stats(request: Request):
+    # Log the request
+    client_ip = request.client.host
+    log_user_request(client_ip)
+    
+    conn = create_connection()
+    if conn is not None:
+        try:
+            cursor = conn.cursor()
+            # Count total unique users
+            cursor.execute("SELECT COUNT(*) FROM user_requests")
+            total_users = cursor.fetchone()[0]
+            
+            # Get most active users
+            cursor.execute(
+                "SELECT ip_address, total_requests, last_request FROM user_requests ORDER BY total_requests DESC LIMIT 10"
+            )
+            most_active_users = [
+                {
+                    "ip_address": row[0],
+                    "total_requests": row[1],
+                    "last_request": datetime.fromtimestamp(row[2]).strftime('%Y-%m-%d %H:%M:%S')
+                }
+                for row in cursor.fetchall()
+            ]
+            
+            # Get most recent users
+            cursor.execute(
+                "SELECT ip_address, total_requests, last_request FROM user_requests ORDER BY last_request DESC LIMIT 10"
+            )
+            recent_users = [
+                {
+                    "ip_address": row[0],
+                    "total_requests": row[1],
+                    "last_request": datetime.fromtimestamp(row[2]).strftime('%Y-%m-%d %H:%M:%S')
+                }
+                for row in cursor.fetchall()
+            ]
+            
+            conn.close()
+            return {
+                "total_unique_users": total_users,
+                "most_active_users": most_active_users,
+                "recent_users": recent_users
+            }
+        except Error as e:
+            conn.close()
+            return {"error": f"Database error: {str(e)}"}
+    return {"error": "Database connection failed"}
+
+@app.get("/user-requests/{ip_address}")
+async def get_user_request_history(request: Request, ip_address: str):
+    # Log the request
+    client_ip = request.client.host
+    log_user_request(client_ip)
+    
+    conn = create_connection()
+    if conn is not None:
+        try:
+            cursor = conn.cursor()
+            cursor.execute(
+                "SELECT request_timestamps, total_requests FROM user_requests WHERE ip_address = ?",
+                (ip_address,)
+            )
+            result = cursor.fetchone()
+            
+            if result:
+                timestamps = json.loads(result[0])
+                formatted_timestamps = [datetime.fromtimestamp(ts).strftime('%Y-%m-%d %H:%M:%S') for ts in timestamps]
+                
+                return {
+                    "ip_address": ip_address,
+                    "total_requests": result[1],
+                    "request_timestamps": formatted_timestamps,
+                    "timestamp_count": len(timestamps)
+                }
+            else:
+                return {"error": f"No request history found for IP: {ip_address}"}
+            
+        except Error as e:
+            conn.close()
+            return {"error": f"Database error: {str(e)}"}
     return {"error": "Database connection failed"}
 
 if __name__ == "__main__":
