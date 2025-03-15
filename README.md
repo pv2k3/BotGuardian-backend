@@ -17,29 +17,23 @@ This is a FastAPI-based API service that helps detect whether a Twitter/X accoun
 
 ## Installation
 
-1. Clone the repository:
-```bash
-git clone https://github.com/yourusername/bot-detector-api.git
-cd bot-detector-api
-```
-
-2. Create a virtual environment and activate it:
+1. Create a virtual environment and activate it:
 ```bash
 python -m venv venv
 source venv/bin/activate  # On Windows: venv\Scripts\activate
 ```
 
-3. Install dependencies:
+2. Install dependencies:
 ```bash
 pip install -r requirements.txt
 ```
 
-4. Create a `.env` file in the project root with your RapidAPI key:
+3. Create a `.env` file in the project root with your RapidAPI key:
 ```
 RAPID_API_KEY1=your_rapidapi_key_here
 ```
 
-5. Make sure you have the ML model file `bot_detector.pkl` in the project directory.
+4. Make sure you have the ML model file `bot_detector.pkl` in the project directory.
 
 ## Usage
 
@@ -49,12 +43,6 @@ Start the API server:
 
 ```bash
 python app.py
-```
-
-Or using uvicorn directly:
-
-```bash
-uvicorn app:app --host 0.0.0.0 --port 8000 --reload
 ```
 
 The API will be available at `http://localhost:8000`
