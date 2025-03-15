@@ -433,6 +433,6 @@ async def get_user_request_history(request: Request, ip_address: str):
             return {"error": f"Database error: {str(e)}"}
     return {"error": "Database connection failed"}
 
-if __name__ == "__main__":
-    import uvicorn
-    uvicorn.run(app, host="0.0.0.0", port=8000)
+# if __name__ == "__main__":
+#     import uvicorn
+#     uvicorn.run(app, host="0.0.0.0", port=8000)
